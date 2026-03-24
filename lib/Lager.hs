@@ -26,6 +26,8 @@ module Lager
   , logEmerg
   , lager
   , lagerSTM
+  , streamLager
+  , Msg(..)
   , dupLager
   , Target(..)
   , Level(..)
@@ -34,7 +36,6 @@ module Lager
 import Control.Applicative
 import Control.Concurrent.Async
 import Control.Concurrent.STM
-import Control.Exception
 import Control.Monad
 import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy    as T
@@ -50,13 +51,14 @@ data Lager = Lager
   , rc :: [TChan Msg]
   }
 
+-- | Log message
 data Msg = Msg
   { lvl :: Level
-  , txt :: Text
-  , src :: Text
+  , txt :: Text -- ^ message
+  , src :: Text -- ^ logger source
   }
 
--- | Acquire a new handle in IO
+-- | Acquire a new handle
 newLager :: Text -> [Target] -> IO Lager
 newLager nm' = atomically . newLagerSTM nm'
 
@@ -99,12 +101,19 @@ lager l lvl' = atomically . lagerSTM l lvl'
 lagerSTM :: Lager -> Level -> Text -> STM ()
 lagerSTM l lvl' msg = writeTChan (wc l) $ Msg lvl' msg (nm l)
 
+-- | Extend the logger name
 dupLager :: Text -> Lager -> Lager
 dupLager nm' l = Lager nm'' [] (wc l) []
   where
     nm'' | T.null nm'    = nm l
          | T.null (nm l) = nm'
          | otherwise     = nm l <> "|" <> nm'
+
+-- | Stream log messages
+streamLager :: Lager -> (IO Msg -> IO a) -> IO a
+streamLager l k = do
+  r <- atomically $ dupTChan $ wc l
+  k  $ atomically $ readTChan  r
 
 -- | Log level
 data Level
@@ -127,19 +136,13 @@ data Target
 
 -- | Run logging daemon
 runLager :: Lager -> IO a
-runLager l = runConfig (tg l) (rc l)
-
-runConfig :: [Target] -> [TChan Msg] -> IO a
-runConfig ts = runConcurrently . asum . zipWith runTarget ts
+runLager l = runConcurrently $ asum $ zipWith runTarget (tg l) (rc l)
 
 runTarget :: Target -> TChan Msg -> Concurrently a
 runTarget t c = Concurrently $ case t of
-  Console l -> runConsole l c
+  Console l -> runHandle stdout renderMsg l c
   File l path -> runFile l path c
   Journal l -> runJournal l c
-
-runConsole :: Level -> TChan Msg -> IO a
-runConsole = runHandle stdout renderMsg
 
 runFile :: Level -> FilePath -> TChan Msg -> IO a
 runFile l path c =
@@ -147,20 +150,14 @@ runFile l path c =
     runHandle hndl renderMsg l c
 
 runJournal :: Level -> TChan Msg -> IO a
-runJournal l c =
-  forever (logHandle stdout render l =<< atomically (readTChan c))
-    `catch` \e -> do
-      flushHandle stdout render l c
-      throwIO (e :: AsyncCancelled)
+runJournal = runHandle stdout render
   where
-    render msg = "<" <> T.pack (show $ fromEnum $ lvl msg) <> "> " <> renderMsg msg
+    render msg =
+      "<" <> T.pack (show $ fromEnum $ lvl msg) <> "> " <> renderMsg msg
 
 runHandle :: Handle -> (Msg -> Text) -> Level -> TChan Msg -> IO a
 runHandle hndl render l c =
-  forever (logHandle hndl render l =<< atomically (readTChan c))
-    `catch` \e -> do
-      flushHandle hndl render l c
-      throwIO (e :: AsyncCancelled)
+  forever $ logHandle hndl render l =<< atomically (readTChan c)
 
 logHandle :: Handle -> (Msg -> Text) -> Level -> Msg -> IO ()
 logHandle hndl render l msg
@@ -174,15 +171,3 @@ renderMsg msg
 
 visible :: Level -> Msg -> Bool
 visible lvl' msg = lvl msg <= lvl'
-
-flushHandle :: Handle -> (Msg -> Text) -> Level -> TChan Msg -> IO ()
-flushHandle hndl render l = mapM_ (logHandle hndl render l) <=< atomically . flushTChan
-
-flushTChan :: TChan a -> STM [a]
-flushTChan t = loop
-  where
-    loop = do
-      isEmpty <- isEmptyTChan t
-      if isEmpty
-        then return []
-        else (:) <$> readTChan t <*> loop
