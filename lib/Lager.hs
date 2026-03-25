@@ -1,14 +1,14 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Concurrent Logger 🍺
+-- | Concurrent Lager 🍺
 --
 -- @
 -- main = do
 --   l <- newLager "APP" [Console Info]
 --   race (runLager l) $ do
 --     logDebug l "Hello World!"
---     logInfo  l "Information!"
+--     logAlert l "Alert!"
 --     logErr   l "Error!"
 -- @
 module Lager
@@ -24,11 +24,10 @@ module Lager
   , logCrit
   , logAlert
   , logEmerg
-  , lager
-  , lagerSTM
-  , streamLager
+  , logSTM
+  , logStream
+  , logSub
   , Msg(..)
-  , dupLager
   , Target(..)
   , Level(..)
   ) where
@@ -95,23 +94,23 @@ logEmerg l = lager l Emerg
 
 -- | Log text in IO
 lager :: Lager -> Level -> Text -> IO ()
-lager l lvl' = atomically . lagerSTM l lvl'
+lager l lvl' = atomically . logSTM l lvl'
 
 -- | Log text in STM
-lagerSTM :: Lager -> Level -> Text -> STM ()
-lagerSTM l lvl' msg = writeTChan (wc l) $ Msg lvl' msg (nm l)
+logSTM :: Lager -> Level -> Text -> STM ()
+logSTM l lvl' msg = writeTChan (wc l) $ Msg lvl' msg (nm l)
 
 -- | Extend the logger name
-dupLager :: Text -> Lager -> Lager
-dupLager nm' l = Lager nm'' [] (wc l) []
+logSub :: Text -> Lager -> Lager
+logSub nm' l = Lager nm'' [] (wc l) []
   where
     nm'' | T.null nm'    = nm l
          | T.null (nm l) = nm'
          | otherwise     = nm l <> "|" <> nm'
 
 -- | Stream log messages
-streamLager :: Lager -> (IO Msg -> IO a) -> IO a
-streamLager l k = do
+logStream :: Lager -> (IO Msg -> IO a) -> IO a
+logStream l k = do
   r <- atomically $ dupTChan $ wc l
   k  $ atomically $ readTChan  r
 
@@ -140,20 +139,20 @@ runLager l = runConcurrently $ asum $ zipWith runTarget (tg l) (rc l)
 
 runTarget :: Target -> TChan Msg -> Concurrently a
 runTarget t c = Concurrently $ case t of
-  Console l -> runHandle stdout renderMsg l c
-  File l path -> runFile l path c
-  Journal l -> runJournal l c
+  Console l -> runHandle stdout renderConsole l c
+  Journal l -> runHandle stdout renderJournal l c
+  File l path ->
+    withFile path WriteMode $ \hndl ->
+      runHandle hndl renderConsole l c
 
-runFile :: Level -> FilePath -> TChan Msg -> IO a
-runFile l path c =
-  withFile path WriteMode $ \hndl ->
-    runHandle hndl renderMsg l c
+renderJournal :: Msg -> Text
+renderJournal msg =
+  "<" <> T.pack (show $ fromEnum $ lvl msg) <> "> " <> renderConsole msg
 
-runJournal :: Level -> TChan Msg -> IO a
-runJournal = runHandle stdout render
-  where
-    render msg =
-      "<" <> T.pack (show $ fromEnum $ lvl msg) <> "> " <> renderMsg msg
+renderConsole :: Msg -> Text
+renderConsole msg
+  | T.null (src msg) = txt msg
+  | otherwise        = "[" <> src msg <> "] " <> txt msg
 
 runHandle :: Handle -> (Msg -> Text) -> Level -> TChan Msg -> IO a
 runHandle hndl render l c =
@@ -163,11 +162,6 @@ logHandle :: Handle -> (Msg -> Text) -> Level -> Msg -> IO ()
 logHandle hndl render l msg
   | not (visible l msg) = return ()
   | otherwise           = T.hPutStrLn hndl $ render msg
-
-renderMsg :: Msg -> Text
-renderMsg msg
-  | T.null (src msg) = txt msg
-  | otherwise        = "[" <> src msg <> "] " <> txt msg
 
 visible :: Level -> Msg -> Bool
 visible lvl' msg = lvl msg <= lvl'

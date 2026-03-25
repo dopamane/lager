@@ -7,13 +7,13 @@ import Lager
 
 main :: IO ()
 main = do
-  l <- newLager "APP" [Journal Debug]
+  l <- newLager "APP" [File Debug "log.txt"]
   race_ (runLager l) $ do
-    lager l Debug "Hello World!"
-    lager l Debug "Invisible"
-    lager l Debug "NOO"
-    lager l Debug "YES"
-    lager l Warning "HI"
+    logDebug l "Hello World!"
+    logDebug l "Invisible"
+    logDebug l "NOO"
+    logDebug l "YES"
+    logWarning  l "HI"
 
-    let l' = dupLager "SYS" l
-    lager l' Info "DUPE!"
+    let l' = logSub "SUB" l
+    logInfo l' "SUB!"
