@@ -7,7 +7,7 @@ import Lager
 
 main :: IO ()
 main = do
-  l <- newLager "APP" [File Debug "log.txt"]
+  l <- newLager "APP" [File Info "log.txt"]
   race_ (runLager l) $ do
     logDebug l "Hello World!"
     logDebug l "Invisible"

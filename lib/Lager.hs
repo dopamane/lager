@@ -36,6 +36,7 @@ import Control.Applicative
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Control.Monad
+import Data.Ord
 import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy    as T
 import qualified Data.Text.Lazy.IO as T
@@ -124,7 +125,10 @@ data Level
   | Notice
   | Info
   | Debug
-  deriving (Enum, Eq, Generic, Ord, Read, Show)
+  deriving (Enum, Eq, Generic, Read, Show)
+
+instance Ord Level where
+  compare = comparing $ negate . fromEnum
 
 -- | Log output
 data Target
@@ -164,4 +168,4 @@ logHandle hndl render l msg
   | otherwise           = T.hPutStrLn hndl $ render msg
 
 visible :: Level -> Msg -> Bool
-visible lvl' msg = lvl msg <= lvl'
+visible lvl' msg = lvl msg >= lvl'
