@@ -7,10 +7,10 @@
 -- import Lager
 --
 -- main = do
---   l <- newLager "APP" [Console Debug, File Info "log.txt"]
---   race_ (runLager l) $ do
---     logDebug   l "Hello World!"
---     logWarning l "Warning!"
+--   l <- 'newLager' \"APP\" ['Console' 'Debug', 'File' 'Info' \"log.txt\"]
+--   race_ ('runLager' l) $ do
+--     'logDebug'   l "Cheers! 🍻"
+--     'logWarning' l "Warning!"
 -- @
 module Lager
   ( Lager
@@ -133,9 +133,9 @@ instance Ord Level where
 
 -- | Log output
 data Target
-  = Console Level
+  = Console Level -- ^ stdout
+  | Journal Level -- ^ journald stdout
   | File Level FilePath
-  | Journal Level
   deriving (Eq, Generic, Read, Show)
 
 -- | Run logging daemon

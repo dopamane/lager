@@ -6,7 +6,7 @@ import Lager
 main = do
   l <- newLager "APP" [Console Debug, File Info "log.txt"]
   race_ (runLager l) $ do
-    logDebug   l "Hello World!"
+    logDebug   l "Cheers! 🍻"
     logWarning l "Warning!"
 ```
 
