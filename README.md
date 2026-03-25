@@ -1,18 +1,16 @@
-# Lager :beer:
-
-Concurrent Logger
+# Concurrent Lager :beer:
 
 ```hs
 import Lager
 
 main = do
-  l <- newLager "APP" [Console Debug]
-  race (runLager l) $ do
+  l <- newLager "APP" [Console Debug, File Info "log.txt"]
+  race_ (runLager l) $ do
     logDebug   l "Hello World!"
     logWarning l "Warning!"
 ```
 
-Build
+Build & Docs
 ```
 cabal build
 cabal haddock

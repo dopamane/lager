@@ -4,12 +4,13 @@
 -- | Concurrent Lager 🍺
 --
 -- @
+-- import Lager
+--
 -- main = do
---   l <- newLager "APP" [Console Info]
---   race (runLager l) $ do
---     logDebug l "Hello World!"
---     logAlert l "Alert!"
---     logErr   l "Error!"
+--   l <- newLager "APP" [Console Debug, File Info "log.txt"]
+--   race_ (runLager l) $ do
+--     logDebug   l "Hello World!"
+--     logWarning l "Warning!"
 -- @
 module Lager
   ( Lager
