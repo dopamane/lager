@@ -3,9 +3,8 @@
 ```hs
 import Lager
 
-main = do
-  l <- newLager "APP" [Console Debug, File Info "log.txt"]
-  race_ (runLager l) $ do
+main =
+  withLager "APP" [ConsoleRGB Info] $ \l -> do
     logDebug   l "Cheers! 🍻"
     logWarning l "Warning!"
 ```

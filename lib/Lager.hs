@@ -6,9 +6,8 @@
 -- @
 -- import Lager
 --
--- main = do
---   l <- 'newLager' \"APP\" ['Console' 'Debug', 'File' 'Info' \"log.txt\"]
---   race_ ('runLager' l) $ do
+-- main =
+--   'withLager' \"APP\" ['File' 'Info' \"log.txt\"] $ \l -> do
 --     'logDebug'   l "Cheers! 🍻"
 --     'logWarning' l "Warning!"
 -- @
