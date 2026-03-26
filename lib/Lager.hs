@@ -42,14 +42,16 @@ import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy    as T
 import qualified Data.Text.Lazy.IO as T
 import GHC.Generics
+import Prettyprinter
+import Prettyprinter.Render.Terminal
 import System.IO
 
 -- | Logging handle
 data Lager = Lager
-  { nm :: Text
+  { nm :: Text        -- source name
   , tg :: [Target]
-  , wc :: TChan Msg
-  , rc :: [TChan Msg]
+  , wc :: TChan Msg   -- write chan
+  , rc :: [TChan Msg] -- read chans
   }
 
 -- | Log message
@@ -131,9 +133,21 @@ data Level
 instance Ord Level where
   compare = comparing $ negate . fromEnum
 
+annLevelColor :: Level -> Doc AnsiStyle -> Doc AnsiStyle
+annLevelColor l = case l of
+  Emerg   -> annotate $ color Red
+  Alert   -> annotate $ color Red
+  Crit    -> annotate $ color Red
+  Err     -> annotate $ color Red
+  Warning -> annotate $ color Yellow
+  Notice  -> annotate $ color Green
+  Info    -> id
+  Debug   -> annotate $ color Cyan
+
 -- | Log output
 data Target
   = Console Level -- ^ stdout
+  | ConsoleRGB Level -- ^ stdout RGB
   | Journal Level -- ^ journald stdout
   | File Level FilePath
   deriving (Eq, Generic, Read, Show)
@@ -145,6 +159,7 @@ runLager l = runConcurrently $ asum $ zipWith runTarget (tg l) (rc l)
 runTarget :: Target -> TChan Msg -> Concurrently a
 runTarget t c = Concurrently $ case t of
   Console l -> runHandle stdout renderConsole l c
+  ConsoleRGB l -> runHandle stdout renderConsoleRGB l c
   Journal l -> runHandle stdout renderJournal l c
   File l path ->
     withFile path WriteMode $ \hndl ->
@@ -158,6 +173,14 @@ renderConsole :: Msg -> Text
 renderConsole msg
   | T.null (src msg) = txt msg
   | otherwise        = "[" <> src msg <> "] " <> txt msg
+
+renderConsoleRGB :: Msg -> Text
+renderConsoleRGB msg =
+  renderLazy $
+  layoutPretty defaultLayoutOptions $
+  annLevelColor (lvl msg) $
+  pretty $
+  renderConsole msg
 
 runHandle :: Handle -> (Msg -> Text) -> Level -> TChan Msg -> IO a
 runHandle hndl render l c =

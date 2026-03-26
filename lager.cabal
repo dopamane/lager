@@ -18,6 +18,8 @@ library
   exposed-modules:  Lager
   build-depends:    async
                   , base
+                  , prettyprinter
+                  , prettyprinter-ansi-terminal
                   , stm
                   , text
 

@@ -7,12 +7,12 @@ import Lager
 
 main :: IO ()
 main = do
-  l <- newLager "APP" [File Info "log.txt"]
+  l <- newLager "APP" [ConsoleRGB Debug]
   race_ (runLager l) $ do
-    logDebug l "Hello World!"
+    logNotice l "Hello World!"
     logDebug l "Invisible"
-    logDebug l "NOO"
-    logDebug l "YES"
+    logErr l "NOO"
+    logInfo l "YES"
     logWarning  l "HI"
 
     let l' = logSub "SUB" l
