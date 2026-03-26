@@ -14,6 +14,7 @@
 -- @
 module Lager
   ( Lager
+  , withLager
   , newLager
   , newLagerSTM
   , runLager
@@ -28,15 +29,19 @@ module Lager
   , logSTM
   , logStream
   , logSub
+  , drinkLager
   , Msg(..)
   , Target(..)
   , Level(..)
   ) where
 
 import Control.Applicative
+import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Concurrent.STM
+import Control.Exception
 import Control.Monad
+import Data.Functor
 import Data.Ord
 import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy    as T
@@ -52,6 +57,8 @@ data Lager = Lager
   , tg :: [Target]
   , wc :: TChan Msg   -- write chan
   , rc :: [TChan Msg] -- read chans
+  , drink :: TVar Bool
+  , drunk :: TVar Bool
   }
 
 -- | Log message
@@ -70,7 +77,16 @@ newLagerSTM :: Text -> [Target] -> STM Lager
 newLagerSTM nm' tgt' = do
   wc' <- newBroadcastTChan
   rc' <- replicateM (length tgt') $ dupTChan wc'
-  return $ Lager nm' tgt' wc' rc'
+  drink' <- newTVar False
+  drunk' <- newTVar False
+  return $ Lager nm' tgt' wc' rc' drink' drunk'
+
+withLager :: Text -> [Target] -> (Lager -> IO a) -> IO a
+withLager nm' tgt' k = do
+  l <- newLager nm' tgt'
+  either id id
+    <$> race (k l `finally` drinkLager l)
+             (runLager l >> forever (threadDelay maxBound))
 
 logDebug :: Lager -> Text -> IO ()
 logDebug l = lager l Debug
@@ -106,7 +122,7 @@ logSTM l lvl' msg = writeTChan (wc l) $ Msg lvl' msg (nm l)
 
 -- | Extend the logger name
 logSub :: Text -> Lager -> Lager
-logSub nm' l = Lager nm'' [] (wc l) []
+logSub nm' l = Lager nm'' [] (wc l) [] (drink l) (drunk l)
   where
     nm'' | T.null nm'    = nm l
          | T.null (nm l) = nm'
@@ -152,18 +168,32 @@ data Target
   | File Level FilePath
   deriving (Eq, Generic, Read, Show)
 
--- | Run logging daemon
-runLager :: Lager -> IO a
-runLager l = runConcurrently $ asum $ zipWith runTarget (tg l) (rc l)
+-- | Finish logging. Blocks until all outputs are written.
+drinkLager :: Lager -> IO ()
+drinkLager l = do
+  atomically $ writeTVar (drink l) True
+  atomically $ checkDrunk l
 
-runTarget :: Target -> TChan Msg -> Concurrently a
-runTarget t c = Concurrently $ case t of
-  Console l -> runHandle stdout renderConsole l c
-  ConsoleRGB l -> runHandle stdout renderConsoleRGB l c
-  Journal l -> runHandle stdout renderJournal l c
+checkDrink :: Lager -> STM ()
+checkDrink = check <=< readTVar . drink
+
+checkDrunk :: Lager -> STM ()
+checkDrunk = check <=< readTVar . drunk
+
+-- | Run logging daemon
+runLager :: Lager -> IO ()
+runLager l =
+  runConcurrently (asum $ zipWith (runTarget l) (tg l) (rc l))
+    `finally` atomically (writeTVar (drunk l) True)
+
+runTarget :: Lager -> Target -> TChan Msg -> Concurrently ()
+runTarget lgr t c = Concurrently $ case t of
+  Console l -> runHandle lgr stdout renderConsole l c
+  ConsoleRGB l -> runHandle lgr stdout renderConsoleRGB l c
+  Journal l -> runHandle lgr stdout renderJournal l c
   File l path ->
     withFile path WriteMode $ \hndl ->
-      runHandle hndl renderConsole l c
+      runHandle lgr hndl renderConsole l c
 
 renderJournal :: Msg -> Text
 renderJournal msg =
@@ -182,14 +212,36 @@ renderConsoleRGB msg =
   pretty $
   renderConsole msg
 
-runHandle :: Handle -> (Msg -> Text) -> Level -> TChan Msg -> IO a
-runHandle hndl render l c =
-  forever $ logHandle hndl render l =<< atomically (readTChan c)
+runHandle
+  :: Lager
+  -> Handle
+  -> (Msg -> Text)
+  -> Level
+  -> TChan Msg
+  -> IO ()
+runHandle lgr hndl render l c = loop
+  where
+    loop = join $ atomically $ do
+      m <- Just `fmap` readTChan c <|> (checkDrink lgr $> Nothing)
+      case m of
+        Just a  -> return $ logHandle hndl render l a >> loop
+        Nothing -> do
+          msgs <- listTChan c
+          return $ mapM_ (logHandle hndl render l) msgs
 
 logHandle :: Handle -> (Msg -> Text) -> Level -> Msg -> IO ()
 logHandle hndl render l msg
   | not (visible l msg) = return ()
   | otherwise           = T.hPutStrLn hndl $ render msg
+
+listTChan :: TChan a -> STM [a]
+listTChan t = loop
+  where
+    loop = do
+      isEmpty <- isEmptyTChan t
+      if isEmpty
+        then return []
+        else (:) <$> readTChan t <*> loop
 
 visible :: Level -> Msg -> Bool
 visible lvl' msg = lvl msg >= lvl'
