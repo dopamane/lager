@@ -12,7 +12,8 @@
 --     'logWarning' l "Warning!"
 -- @
 module Lager
-  ( Lager
+  ( -- * Logging
+    Lager
   , withLager
   , newLager
   , newLagerSTM
@@ -30,8 +31,12 @@ module Lager
   , logStream
   , logSub
   , Msg(..)
-  , Target(..)
+  , -- * Target
+    Target(..)
   , Level(..)
+  , defLevelRGB
+  , -- * Exception
+    LagerException(..)
   ) where
 
 import Control.Applicative
@@ -80,8 +85,9 @@ newLagerSTM nm' tgt' = do
     <*> newTVar False
     <*> newTVar False
 
--- | Acquire a 'Lager' and ensure logs are flushed if the
--- body terminates or throws an exception.
+-- | Acquire a 'newLager', concurrently 'runLager',
+-- then finally 'drinkLager' if the body terminates
+-- or throws an exception.
 withLager :: Text -> [Target] -> (Lager -> IO a) -> IO a
 withLager nm' tgt' k = do
   l <- newLager nm' tgt'
@@ -165,24 +171,25 @@ data Level
 instance Ord Level where
   compare = comparing $ negate . fromEnum
 
-annLevelColor :: Level -> Doc AnsiStyle -> Doc AnsiStyle
-annLevelColor l = case l of
-  Emerg   -> annotate $ color Red
-  Alert   -> annotate $ color Red
-  Crit    -> annotate $ color Red
-  Err     -> annotate $ color Red
-  Warning -> annotate $ color Yellow
-  Notice  -> annotate $ color Green
-  Info    -> id
-  Debug   -> annotate $ color Cyan
+annLevelColor :: Level -> [(Level, Color)] -> Doc AnsiStyle -> Doc AnsiStyle
+annLevelColor l m = case lookup l m of
+  Just c  -> annotate $ color c
+  Nothing -> id
+
+-- | Default 'ConsoleRGB' color schema
+defLevelRGB :: [(Level, Color)]
+defLevelRGB =
+  [ (Emerg, Red), (Alert, Red), (Crit, Red), (Err, Red)
+  , (Warning, Yellow), (Notice, Green), (Debug, Cyan)
+  ]
 
 -- | Log output
 data Target
   = Console Level -- ^ stdout
-  | ConsoleRGB Level -- ^ stdout RGB
+  | ConsoleRGB Level [(Level, Color)] -- ^ stdout RGB
   | Journal Level -- ^ journald stdout
   | File Level FilePath
-  deriving (Eq, Generic, Read, Show)
+  deriving (Eq, Generic, Show)
 
 -- | Run logging daemon
 runLager :: Lager -> IO ()
@@ -193,7 +200,7 @@ runLager l =
 runTarget :: Lager -> (Target, TChan Msg) -> IO ()
 runTarget lgr (t, c) = case t of
   Console l -> runHandle lgr stdout renderConsole l c
-  ConsoleRGB l -> runHandle lgr stdout renderConsoleRGB l c
+  ConsoleRGB l m -> runHandle lgr stdout (renderConsoleRGB m) l c
   Journal l -> runHandle lgr stdout renderJournal l c
   File l path ->
     withFile path WriteMode $ \hndl ->
@@ -208,11 +215,11 @@ renderConsole msg
   | T.null (src msg) = txt msg
   | otherwise        = "[" <> src msg <> "] " <> txt msg
 
-renderConsoleRGB :: Msg -> Text
-renderConsoleRGB msg =
+renderConsoleRGB :: [(Level, Color)] -> Msg -> Text
+renderConsoleRGB m msg =
   renderLazy $
   layoutPretty defaultLayoutOptions $
-  annLevelColor (lvl msg) $
+  annLevelColor (lvl msg) m $
   pretty $
   renderConsole msg
 
