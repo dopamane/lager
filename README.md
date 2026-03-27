@@ -4,7 +4,7 @@
 import Lager
 
 main =
-  withLager "APP" [ConsoleRGB Info] $ \l -> do
+  withLager "APP" [Console Info defLevelRGB] $ \l -> do
     logDebug   l "Cheers! 🍻"
     logWarning l "Warning!"
 ```

@@ -5,7 +5,7 @@ module Main (main) where
 import Lager
 
 main :: IO ()
-main = withLager "APP" [ConsoleRGB Debug defLevelRGB, File Info "log.txt"] $ \l -> do
+main = withLager "APP" [Console Debug defLevelRGB, File Info "log.txt"] $ \l -> do
   logNotice l "Hello World!"
   logDebug l "Invisible"
   logErr l "NOO"

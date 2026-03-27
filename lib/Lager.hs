@@ -181,7 +181,7 @@ annLevelColor l m = case lookup l m of
   Just c  -> annotate $ color c
   Nothing -> id
 
--- | Default 'ConsoleRGB' color schema
+-- | Default 'Console' color schema
 defLevelRGB :: [(Level, Color)]
 defLevelRGB =
   [ (Emerg, Red), (Alert, Red), (Crit, Red), (Err, Red)
@@ -190,9 +190,8 @@ defLevelRGB =
 
 -- | Log output
 data Target
-  = Console Level -- ^ stdout
-  | ConsoleRGB Level [(Level, Color)] -- ^ stdout RGB
-  | Journal Level -- ^ journald stdout
+  = Console Level [(Level, Color)] -- ^ stdout, optional RGB
+  | Journal Level                  -- ^ journald stdout
   | File Level FilePath
   deriving (Eq, Generic, Show)
 
@@ -204,8 +203,7 @@ runLager l =
 
 runTarget :: Lager -> (Target, TChan Msg) -> IO ()
 runTarget lgr (t, c) = case t of
-  Console l -> runHandle lgr stdout renderConsole l c
-  ConsoleRGB l m -> runHandle lgr stdout (renderConsoleRGB m) l c
+  Console l m -> runHandle lgr stdout (renderConsoleRGB m) l c
   Journal l -> runHandle lgr stdout renderJournal l c
   File l path ->
     withFile path WriteMode $ \hndl ->
