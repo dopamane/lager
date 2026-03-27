@@ -138,8 +138,7 @@ lager l lvl' = atomically . logSTM l lvl'
 -- | Log text in STM
 logSTM :: Lager -> Level -> Text -> STM ()
 logSTM l lvl' msg = do
-  isDrunk <- readTVar (drunk l)
-  when isDrunk $ throwSTM LagerDaemonTerminated
+  throwIfDrunk l
   writeTChan (wc l) $ Msg lvl' msg (nm l)
 
 -- | Extend the logger name
@@ -153,8 +152,13 @@ logSub nm' l = Lager nm'' [] (wc l) [] (drink l) (drunk l)
 -- | Stream log messages
 logStream :: Lager -> (IO Msg -> IO a) -> IO a
 logStream l k = do
-  r <- atomically $ dupTChan $ wc l
-  k  $ atomically $ readTChan  r
+  r <- atomically $ throwIfDrunk l *> dupTChan (wc l)
+  k  $ atomically $ throwIfDrunk l *> readTChan  r
+
+throwIfDrunk :: Lager -> STM ()
+throwIfDrunk l = do
+  isDrunk <- readTVar $ drunk l
+  when isDrunk $ throwSTM LagerDaemonTerminated
 
 -- | Log level
 data Level
