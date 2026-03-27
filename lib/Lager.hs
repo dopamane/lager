@@ -7,8 +7,8 @@
 --
 -- main =
 --   'withLager' \"APP\" ['File' 'Info' \"log.txt\"] $ \\l -> do
---     'logDebug'   l "Cheers! 🍻"
---     'logWarning' l "Warning!"
+--     'logDebug' l "Cheers! 🍻"
+--     'logWarn'  l "Warning!"
 -- @
 module Lager
   ( -- * Logging
@@ -19,22 +19,29 @@ module Lager
   , runLager
   , drinkLager
   , streamLager
+  , extendLager
   , logDebug
+  , logDebugSTM
   , logInfo
+  , logInfoSTM
   , logNotice
-  , logWarning
+  , logNoticeSTM
+  , logWarn
+  , logWarnSTM
   , logErr
+  , logErrSTM
   , logCrit
+  , logCritSTM
   , logAlert
+  , logAlertSTM
   , logEmerg
-  , logSTM
-  , logSub
+  , logEmergSTM
   , Msg(..)
   , -- * Target
     Target(..)
   , defConsole
   , Level(..)
-  , defLevelRGB
+  , defLevelColor
   , Color(..)
   , -- * Exception
     LagerException(..)
@@ -106,58 +113,77 @@ checkDrink = check <=< readTVar . drink
 checkDrunk :: Lager -> STM ()
 checkDrunk = check <=< readTVar . drunk
 
-logDebug :: Lager -> String -> IO ()
-logDebug l = lager l Debug
-
-logInfo :: Lager -> String -> IO ()
-logInfo l = lager l Info
-
-logNotice :: Lager -> String -> IO ()
-logNotice l = lager l Notice
-
-logWarning :: Lager -> String -> IO ()
-logWarning l = lager l Warning
-
-logErr :: Lager -> String -> IO ()
-logErr l = lager l Err
-
-logCrit :: Lager -> String -> IO ()
-logCrit l = lager l Crit
-
-logAlert :: Lager -> String -> IO ()
-logAlert l = lager l Alert
-
-logEmerg :: Lager -> String -> IO ()
-logEmerg l = lager l Emerg
-
--- | Log text in IO
-lager :: Lager -> Level -> String -> IO ()
-lager l lvl' = atomically . logSTM l lvl'
-
--- | Log text in STM
-logSTM :: Lager -> Level -> String -> STM ()
-logSTM l lvl' msg = do
-  throwIfDrunk l
-  writeTChan (wc l) $ Msg lvl' msg (nm l)
-
--- | Extend the logger name
-logSub :: String -> Lager -> Lager
-logSub nm' l = Lager nm'' [] (wc l) [] (drink l) (drunk l)
-  where
-    nm'' | null nm'    = nm l
-         | null (nm l) = nm'
-         | otherwise   = nm l <> "|" <> nm'
-
 -- | Stream log messages
 streamLager :: Lager -> (IO Msg -> IO a) -> IO a
 streamLager l k = do
   r <- atomically $ throwIfDrunk l *> dupTChan (wc l)
   k  $ atomically $ throwIfDrunk l *> readTChan  r
 
-throwIfDrunk :: Lager -> STM ()
-throwIfDrunk l = do
-  isDrunk <- readTVar $ drunk l
-  when isDrunk $ throwSTM LagerDaemonTerminated
+-- | Extend the logger name
+extendLager :: String -> Lager -> Lager
+extendLager nm' l = Lager nm'' [] (wc l) [] (drink l) (drunk l)
+  where
+    nm'' | null nm'    = nm l
+         | null (nm l) = nm'
+         | otherwise   = nm l <> "|" <> nm'
+
+-- | Log text in IO
+lager :: Lager -> Level -> String -> IO ()
+lager l lvl' = atomically . lagerSTM l lvl'
+
+-- | Log text in STM
+lagerSTM :: Lager -> Level -> String -> STM ()
+lagerSTM l lvl' msg = do
+  throwIfDrunk l
+  writeTChan (wc l) $ Msg lvl' msg (nm l)
+
+logDebug :: Lager -> String -> IO ()
+logDebug l = lager l Debug
+
+logDebugSTM :: Lager -> String -> STM ()
+logDebugSTM l = lagerSTM l Debug
+
+logInfo :: Lager -> String -> IO ()
+logInfo l = lager l Info
+
+logInfoSTM :: Lager -> String -> STM ()
+logInfoSTM l = lagerSTM l Info
+
+logNotice :: Lager -> String -> IO ()
+logNotice l = lager l Notice
+
+logNoticeSTM :: Lager -> String -> STM ()
+logNoticeSTM l = lagerSTM l Notice
+
+logWarn :: Lager -> String -> IO ()
+logWarn l = lager l Warn
+
+logWarnSTM :: Lager -> String -> STM ()
+logWarnSTM l = lagerSTM l Warn
+
+logErr :: Lager -> String -> IO ()
+logErr l = lager l Err
+
+logErrSTM :: Lager -> String -> STM ()
+logErrSTM l = lagerSTM l Err
+
+logCrit :: Lager -> String -> IO ()
+logCrit l = lager l Crit
+
+logCritSTM :: Lager -> String -> STM ()
+logCritSTM l = lagerSTM l Crit
+
+logAlert :: Lager -> String -> IO ()
+logAlert l = lager l Alert
+
+logAlertSTM :: Lager -> String -> STM ()
+logAlertSTM l = lagerSTM l Alert
+
+logEmerg :: Lager -> String -> IO ()
+logEmerg l = lager l Emerg
+
+logEmergSTM :: Lager -> String -> STM ()
+logEmergSTM l = lagerSTM l Emerg
 
 -- | Log level
 data Level
@@ -165,7 +191,7 @@ data Level
   | Alert
   | Crit  -- ^ critcal
   | Err   -- ^ error
-  | Warning
+  | Warn  -- ^ warning
   | Notice
   | Info
   | Debug
@@ -181,23 +207,23 @@ annLevelColor l m = case lookup l m of
   Nothing -> id
 
 -- | Default 'Console' color schema
-defLevelRGB :: [(Level, Color)]
-defLevelRGB =
+defLevelColor :: [(Level, Color)]
+defLevelColor =
   [ (Emerg, Red), (Alert, Red), (Crit, Red), (Err, Red)
-  , (Warning, Yellow), (Notice, Green), (Debug, Cyan)
+  , (Warn, Yellow), (Notice, Green), (Debug, Cyan)
   ]
 
 -- | Log output
 data Target
-  = Console Level [(Level, Color)] -- ^ stdout, optional RGB
+  = Console Level [(Level, Color)] -- ^ stdout, color schema
   | Journal Level                  -- ^ journald stdout
   | File Level FilePath
   deriving (Eq, Generic, Show)
 
 -- | Default 'Console' target with 'Info' log level
--- and 'defLevelRGB' color schema.
+-- and 'defLevelColor' color schema.
 defConsole :: Target
-defConsole = Console Info defLevelRGB
+defConsole = Console Info defLevelColor
 
 -- | Run logging daemon
 runLager :: Lager -> IO ()
@@ -209,7 +235,7 @@ runLager l = run `finally` atomically (writeTVar (drunk l) True)
 
 runTarget :: Lager -> (Target, TChan Msg) -> IO ()
 runTarget lgr (t, c) = case t of
-  Console l m -> runHandle lgr stdout (renderConsoleRGB m) l c
+  Console l m -> runHandle lgr stdout (renderConsoleColor m) l c
   Journal l -> runHandle lgr stdout renderJournal l c
   File l path ->
     withFile path WriteMode $ \hndl ->
@@ -224,8 +250,8 @@ renderConsole msg
   | null (src msg) = txt msg
   | otherwise      = "[" <> src msg <> "] " <> txt msg
 
-renderConsoleRGB :: [(Level, Color)] -> Msg -> String
-renderConsoleRGB m msg =
+renderConsoleColor :: [(Level, Color)] -> Msg -> String
+renderConsoleColor m msg =
   T.unpack $
   renderLazy $
   layoutPretty defaultLayoutOptions $
@@ -276,3 +302,8 @@ instance Show LagerException where
   show LagerDaemonTerminated = "lager: daemon terminated"
 
 instance Exception LagerException
+
+throwIfDrunk :: Lager -> STM ()
+throwIfDrunk l = do
+  isDrunk <- readTVar $ drunk l
+  when isDrunk $ throwSTM LagerDaemonTerminated

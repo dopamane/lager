@@ -7,15 +7,15 @@ import Lager
 
 main :: IO ()
 main =
-  withLager "APP" [Journal Debug] $ \l ->
+  withLager "APP" [Console Debug defLevelColor] $ \l ->
   streamLager l $ \msgIO ->
   concurrently_ (streaming msgIO) $ do
     logNotice l "Hello World!"
     logDebug l "Invisible"
     logErr l "NOO"
     logInfo l "YES"
-    logWarning  l "HI"
-    let l' = logSub "SUB" l
+    logWarn  l "HI"
+    let l' = extendLager "SUB" l
     logInfo l' "SUB!"
     forever $ do
       mapConcurrently_ id
@@ -23,7 +23,7 @@ main =
           logAlert l "Alert!"
         , logCrit l "Critical."
         , logErr l "Error."
-        , logWarning l "Warning"
+        , logWarn l "Warning"
         , logNotice l "Notice"
         , logInfo l "Information"
         , logDebug l "Debugging"
