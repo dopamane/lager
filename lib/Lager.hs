@@ -162,17 +162,17 @@ throwIfDrunk l = do
 
 -- | Log level
 data Level
-  = Emerg
+  = Emerg -- ^ emergency
   | Alert
-  | Crit
-  | Err
+  | Crit  -- ^ critcal
+  | Err   -- ^ error
   | Warning
   | Notice
   | Info
   | Debug
   deriving (Enum, Eq, Generic, Read, Show)
 
--- | @'Debug' < 'Emerg'@
+-- | 'Debug' < 'Emerg'
 instance Ord Level where
   compare = comparing $ negate . fromEnum
 
