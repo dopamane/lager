@@ -33,6 +33,7 @@ module Lager
   , Msg(..)
   , -- * Target
     Target(..)
+  , defConsole
   , Level(..)
   , defLevelRGB
   , -- * Exception
@@ -194,6 +195,11 @@ data Target
   | Journal Level                  -- ^ journald stdout
   | File Level FilePath
   deriving (Eq, Generic, Show)
+
+-- | Default 'Console' target with 'Info' log level
+-- and 'defLevelRGB' color schema.
+defConsole :: Target
+defConsole = Console Info defLevelRGB
 
 -- | Run logging daemon
 runLager :: Lager -> IO ()
