@@ -18,6 +18,7 @@ module Lager
   , newLagerSTM
   , runLager
   , drinkLager
+  , streamLager
   , logDebug
   , logInfo
   , logNotice
@@ -27,7 +28,6 @@ module Lager
   , logAlert
   , logEmerg
   , logSTM
-  , logStream
   , logSub
   , Msg(..)
   , -- * Target
@@ -148,8 +148,8 @@ logSub nm' l = Lager nm'' [] (wc l) [] (drink l) (drunk l)
          | otherwise   = nm l <> "|" <> nm'
 
 -- | Stream log messages
-logStream :: Lager -> (IO Msg -> IO a) -> IO a
-logStream l k = do
+streamLager :: Lager -> (IO Msg -> IO a) -> IO a
+streamLager l k = do
   r <- atomically $ throwIfDrunk l *> dupTChan (wc l)
   k  $ atomically $ throwIfDrunk l *> readTChan  r
 
@@ -200,9 +200,11 @@ defConsole = Console Info defLevelRGB
 
 -- | Run logging daemon
 runLager :: Lager -> IO ()
-runLager l =
-  mapConcurrently_ (runTarget l) (zip (tg l) (rc l))
-    `finally` atomically (writeTVar (drunk l) True)
+runLager l = run `finally` atomically (writeTVar (drunk l) True)
+  where
+    run = case zip (tg l) (rc l) of
+      [] -> atomically $ checkDrink l
+      ts -> mapConcurrently_ (runTarget l) ts
 
 runTarget :: Lager -> (Target, TChan Msg) -> IO ()
 runTarget lgr (t, c) = case t of
