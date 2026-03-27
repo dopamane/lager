@@ -7,7 +7,7 @@
 -- import Lager
 --
 -- main =
---   'withLager' \"APP\" ['File' 'Info' \"log.txt\"] $ \l -> do
+--   'withLager' \"APP\" ['File' 'Info' \"log.txt\"] $ \\l -> do
 --     'logDebug'   l "Cheers! 🍻"
 --     'logWarning' l "Warning!"
 -- @
@@ -17,6 +17,7 @@ module Lager
   , newLager
   , newLagerSTM
   , runLager
+  , drinkLager
   , logDebug
   , logInfo
   , logNotice
@@ -28,7 +29,6 @@ module Lager
   , logSTM
   , logStream
   , logSub
-  , drinkLager
   , Msg(..)
   , Target(..)
   , Level(..)
@@ -75,17 +75,31 @@ newLager nm' = atomically . newLagerSTM nm'
 newLagerSTM :: Text -> [Target] -> STM Lager
 newLagerSTM nm' tgt' = do
   wc' <- newBroadcastTChan
-  rc' <- replicateM (length tgt') $ dupTChan wc'
-  drink' <- newTVar False
-  drunk' <- newTVar False
-  return $ Lager nm' tgt' wc' rc' drink' drunk'
+  Lager nm' tgt' wc'
+    <$> replicateM (length tgt') (dupTChan wc')
+    <*> newTVar False
+    <*> newTVar False
 
+-- | Acquire a 'Lager' and ensure logs are flushed if the
+-- body terminates or throws an exception.
 withLager :: Text -> [Target] -> (Lager -> IO a) -> IO a
 withLager nm' tgt' k = do
   l <- newLager nm' tgt'
   either id id
     <$> race (k l `finally` drinkLager l)
              (runLager l >> forever (threadDelay maxBound))
+
+-- | Finish logging. Blocks until all outputs are written by 'runLager'.
+drinkLager :: Lager -> IO ()
+drinkLager l = do
+  atomically $ writeTVar (drink l) True
+  atomically $ checkDrunk l
+
+checkDrink :: Lager -> STM ()
+checkDrink = check <=< readTVar . drink
+
+checkDrunk :: Lager -> STM ()
+checkDrunk = check <=< readTVar . drunk
 
 logDebug :: Lager -> Text -> IO ()
 logDebug l = lager l Debug
@@ -117,7 +131,10 @@ lager l lvl' = atomically . logSTM l lvl'
 
 -- | Log text in STM
 logSTM :: Lager -> Level -> Text -> STM ()
-logSTM l lvl' msg = writeTChan (wc l) $ Msg lvl' msg (nm l)
+logSTM l lvl' msg = do
+  isDrunk <- readTVar (drunk l)
+  when isDrunk $ throwSTM LagerDaemonTerminated
+  writeTChan (wc l) $ Msg lvl' msg (nm l)
 
 -- | Extend the logger name
 logSub :: Text -> Lager -> Lager
@@ -167,26 +184,14 @@ data Target
   | File Level FilePath
   deriving (Eq, Generic, Read, Show)
 
--- | Finish logging. Blocks until all outputs are written.
-drinkLager :: Lager -> IO ()
-drinkLager l = do
-  atomically $ writeTVar (drink l) True
-  atomically $ checkDrunk l
-
-checkDrink :: Lager -> STM ()
-checkDrink = check <=< readTVar . drink
-
-checkDrunk :: Lager -> STM ()
-checkDrunk = check <=< readTVar . drunk
-
 -- | Run logging daemon
 runLager :: Lager -> IO ()
 runLager l =
-  runConcurrently (asum $ zipWith (runTarget l) (tg l) (rc l))
+  mapConcurrently_ id (zipWith (runTarget l) (tg l) (rc l))
     `finally` atomically (writeTVar (drunk l) True)
 
-runTarget :: Lager -> Target -> TChan Msg -> Concurrently ()
-runTarget lgr t c = Concurrently $ case t of
+runTarget :: Lager -> Target -> TChan Msg -> IO ()
+runTarget lgr t c = case t of
   Console l -> runHandle lgr stdout renderConsole l c
   ConsoleRGB l -> runHandle lgr stdout renderConsoleRGB l c
   Journal l -> runHandle lgr stdout renderJournal l c
@@ -244,3 +249,12 @@ listTChan t = loop
 
 visible :: Level -> Msg -> Bool
 visible lvl' msg = lvl msg >= lvl'
+
+data LagerException
+  = LagerDaemonTerminated
+    -- ^ the daemon is already closed due to 'drinkLager'
+
+instance Show LagerException where
+  show LagerDaemonTerminated = "lager: daemon terminated"
+
+instance Exception LagerException
