@@ -71,7 +71,7 @@ data Msg = Msg
   { lvl :: Level
   , txt :: Text -- ^ message
   , src :: Text -- ^ logger source
-  }
+  } deriving (Eq, Generic, Read, Show)
 
 -- | Acquire a new handle
 newLager :: Text -> [Target] -> IO Lager

@@ -1,13 +1,13 @@
 cabal-version:      3.0
 name:               lager
-version:            0.1.0.0
+version:            0.1.0.1
 synopsis:           Concurrent logging
 license:            MIT
 license-file:       LICENSE
 author:             dopamane
 maintainer:         dwc1295@gmail.com
 copyright:          David Cox
-category:           Logger
+category:           concurrency, logging, stm
 build-type:         Simple
 extra-doc-files:    CHANGELOG.md
                     README.md
@@ -22,7 +22,7 @@ library
   ghc-options:      -Wall -O2
   exposed-modules:  Lager
   build-depends:    async
-                  , base < 5.0
+                  , base < 5
                   , prettyprinter
                   , prettyprinter-ansi-terminal
                   , stm
