@@ -172,6 +172,7 @@ data Level
   | Debug
   deriving (Enum, Eq, Generic, Read, Show)
 
+-- | @'Debug' < 'Emerg'@
 instance Ord Level where
   compare = comparing $ negate . fromEnum
 
