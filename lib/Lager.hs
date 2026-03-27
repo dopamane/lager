@@ -187,11 +187,11 @@ data Target
 -- | Run logging daemon
 runLager :: Lager -> IO ()
 runLager l =
-  mapConcurrently_ id (zipWith (runTarget l) (tg l) (rc l))
+  mapConcurrently_ (runTarget l) (zip (tg l) (rc l))
     `finally` atomically (writeTVar (drunk l) True)
 
-runTarget :: Lager -> Target -> TChan Msg -> IO ()
-runTarget lgr t c = case t of
+runTarget :: Lager -> (Target, TChan Msg) -> IO ()
+runTarget lgr (t, c) = case t of
   Console l -> runHandle lgr stdout renderConsole l c
   ConsoleRGB l -> runHandle lgr stdout renderConsoleRGB l c
   Journal l -> runHandle lgr stdout renderJournal l c
