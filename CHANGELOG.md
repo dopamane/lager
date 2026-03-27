@@ -1,5 +1,10 @@
 # Revision history for lager
 
+## 1.0.0.0 -- 3-26-2026
+
+* finalize API
+* test
+
 ## 0.2.0.0 -- 3-26-2026
 
 * switch to `String` API

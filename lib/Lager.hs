@@ -155,18 +155,21 @@ logNotice l = lager l Notice
 logNoticeSTM :: Lager -> String -> STM ()
 logNoticeSTM l = lagerSTM l Notice
 
+-- | warning
 logWarn :: Lager -> String -> IO ()
 logWarn l = lager l Warn
 
 logWarnSTM :: Lager -> String -> STM ()
 logWarnSTM l = lagerSTM l Warn
 
+-- | error
 logErr :: Lager -> String -> IO ()
 logErr l = lager l Err
 
 logErrSTM :: Lager -> String -> STM ()
 logErrSTM l = lagerSTM l Err
 
+-- | critical
 logCrit :: Lager -> String -> IO ()
 logCrit l = lager l Crit
 
@@ -179,6 +182,7 @@ logAlert l = lager l Alert
 logAlertSTM :: Lager -> String -> STM ()
 logAlertSTM l = lagerSTM l Alert
 
+-- | emergency
 logEmerg :: Lager -> String -> IO ()
 logEmerg l = lager l Emerg
 
