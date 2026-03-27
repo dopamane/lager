@@ -1,5 +1,4 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 -- | Concurrent Lager 🍺
 --
@@ -48,9 +47,7 @@ import Control.Exception
 import Control.Monad
 import Data.Functor
 import Data.Ord
-import Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy    as T
-import qualified Data.Text.Lazy.IO as T
+import qualified Data.Text.Lazy as T
 import GHC.Generics
 import Prettyprinter
 import Prettyprinter.Render.Terminal
@@ -58,7 +55,7 @@ import System.IO
 
 -- | Logging handle
 data Lager = Lager
-  { nm :: Text        -- source name
+  { nm :: String      -- source name
   , tg :: [Target]
   , wc :: TChan Msg   -- write chan
   , rc :: [TChan Msg] -- read chans
@@ -69,16 +66,16 @@ data Lager = Lager
 -- | Log message
 data Msg = Msg
   { lvl :: Level
-  , txt :: Text -- ^ message
-  , src :: Text -- ^ logger source
+  , txt :: String -- ^ message
+  , src :: String -- ^ logger source
   } deriving (Eq, Generic, Read, Show)
 
 -- | Acquire a new handle
-newLager :: Text -> [Target] -> IO Lager
+newLager :: String -> [Target] -> IO Lager
 newLager nm' = atomically . newLagerSTM nm'
 
 -- | Acquire a new handle in STM
-newLagerSTM :: Text -> [Target] -> STM Lager
+newLagerSTM :: String -> [Target] -> STM Lager
 newLagerSTM nm' tgt' = do
   wc' <- newBroadcastTChan
   Lager nm' tgt' wc'
@@ -89,7 +86,7 @@ newLagerSTM nm' tgt' = do
 -- | Acquire a 'newLager', concurrently 'runLager',
 -- then finally 'drinkLager' if the body terminates
 -- or throws an exception.
-withLager :: Text -> [Target] -> (Lager -> IO a) -> IO a
+withLager :: String -> [Target] -> (Lager -> IO a) -> IO a
 withLager nm' tgt' k = do
   l <- newLager nm' tgt'
   either id id
@@ -108,47 +105,47 @@ checkDrink = check <=< readTVar . drink
 checkDrunk :: Lager -> STM ()
 checkDrunk = check <=< readTVar . drunk
 
-logDebug :: Lager -> Text -> IO ()
+logDebug :: Lager -> String -> IO ()
 logDebug l = lager l Debug
 
-logInfo :: Lager -> Text -> IO ()
+logInfo :: Lager -> String -> IO ()
 logInfo l = lager l Info
 
-logNotice :: Lager -> Text -> IO ()
+logNotice :: Lager -> String -> IO ()
 logNotice l = lager l Notice
 
-logWarning :: Lager -> Text -> IO ()
+logWarning :: Lager -> String -> IO ()
 logWarning l = lager l Warning
 
-logErr :: Lager -> Text -> IO ()
+logErr :: Lager -> String -> IO ()
 logErr l = lager l Err
 
-logCrit :: Lager -> Text -> IO ()
+logCrit :: Lager -> String -> IO ()
 logCrit l = lager l Crit
 
-logAlert :: Lager -> Text -> IO ()
+logAlert :: Lager -> String -> IO ()
 logAlert l = lager l Alert
 
-logEmerg :: Lager -> Text -> IO ()
+logEmerg :: Lager -> String -> IO ()
 logEmerg l = lager l Emerg
 
 -- | Log text in IO
-lager :: Lager -> Level -> Text -> IO ()
+lager :: Lager -> Level -> String -> IO ()
 lager l lvl' = atomically . logSTM l lvl'
 
 -- | Log text in STM
-logSTM :: Lager -> Level -> Text -> STM ()
+logSTM :: Lager -> Level -> String -> STM ()
 logSTM l lvl' msg = do
   throwIfDrunk l
   writeTChan (wc l) $ Msg lvl' msg (nm l)
 
 -- | Extend the logger name
-logSub :: Text -> Lager -> Lager
+logSub :: String -> Lager -> Lager
 logSub nm' l = Lager nm'' [] (wc l) [] (drink l) (drunk l)
   where
-    nm'' | T.null nm'    = nm l
-         | T.null (nm l) = nm'
-         | otherwise     = nm l <> "|" <> nm'
+    nm'' | null nm'    = nm l
+         | null (nm l) = nm'
+         | otherwise   = nm l <> "|" <> nm'
 
 -- | Stream log messages
 logStream :: Lager -> (IO Msg -> IO a) -> IO a
@@ -215,17 +212,18 @@ runTarget lgr (t, c) = case t of
     withFile path WriteMode $ \hndl ->
       runHandle lgr hndl renderConsole l c
 
-renderJournal :: Msg -> Text
+renderJournal :: Msg -> String
 renderJournal msg =
-  "<" <> T.pack (show $ fromEnum $ lvl msg) <> "> " <> renderConsole msg
+  "<" <> show (fromEnum $ lvl msg) <> "> " <> renderConsole msg
 
-renderConsole :: Msg -> Text
+renderConsole :: Msg -> String
 renderConsole msg
-  | T.null (src msg) = txt msg
-  | otherwise        = "[" <> src msg <> "] " <> txt msg
+  | null (src msg) = txt msg
+  | otherwise      = "[" <> src msg <> "] " <> txt msg
 
-renderConsoleRGB :: [(Level, Color)] -> Msg -> Text
+renderConsoleRGB :: [(Level, Color)] -> Msg -> String
 renderConsoleRGB m msg =
+  T.unpack $
   renderLazy $
   layoutPretty defaultLayoutOptions $
   annLevelColor (lvl msg) m $
@@ -235,7 +233,7 @@ renderConsoleRGB m msg =
 runHandle
   :: Lager
   -> Handle
-  -> (Msg -> Text)
+  -> (Msg -> String)
   -> Level
   -> TChan Msg
   -> IO ()
@@ -249,10 +247,10 @@ runHandle lgr hndl render l c = loop
           msgs <- listTChan c
           return $ mapM_ (logHandle hndl render l) msgs
 
-logHandle :: Handle -> (Msg -> Text) -> Level -> Msg -> IO ()
+logHandle :: Handle -> (Msg -> String) -> Level -> Msg -> IO ()
 logHandle hndl render l msg
   | not (visible l msg) = return ()
-  | otherwise           = T.hPutStrLn hndl $ render msg
+  | otherwise           = hPutStrLn hndl $ render msg
 
 listTChan :: TChan a -> STM [a]
 listTChan t = loop
