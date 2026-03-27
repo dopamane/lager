@@ -35,6 +35,7 @@ module Lager
   , defConsole
   , Level(..)
   , defLevelRGB
+  , Color(..)
   , -- * Exception
     LagerException(..)
   ) where
