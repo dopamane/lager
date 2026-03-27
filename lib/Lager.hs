@@ -270,6 +270,7 @@ visible lvl' msg = lvl msg >= lvl'
 data LagerException
   = LagerDaemonTerminated
     -- ^ the daemon is already closed due to 'drinkLager'
+    -- or an exception
 
 instance Show LagerException where
   show LagerDaemonTerminated = "lager: daemon terminated"
